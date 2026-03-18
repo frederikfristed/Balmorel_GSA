@@ -80,7 +80,10 @@ $ifi %HYDROGEN%==yes PARAMETER XH2_FLOW_YCR(Y,C,IRRRE,IRRRI,UNITS) "H2 Transmiss
 $ifi %HYDROGEN%==yes PARAMETER ECO_XH2_YCR(Y,C,RRR,IRRRI,CATEGORY,SUBCATEGORY,UNITS) "H2 Transmission Economic Output for each year, country and region (Mmoney)";
 $ifi %HYDROGEN%==yes PARAMETER H2_DEMAND_YCRST(Y,C,RRR,SSS,TTT,VARIABLE_CATEGORY,UNITS) "Aggregated Hourly H2 Demand (MWh)";
 $ifi %HYDROGEN%==yes PARAMETER H2_DEMAND_YCR(Y,C,RRR,VARIABLE_CATEGORY,UNITS) "Aggregated annual H2 Demand (TWh)";
-
+$ifi %EV%==yes PARAMETER V2G_FLEX_Y(Y) "Total V2G flexibility use (TWh)";
+$ifi %EV%==yes PARAMETER V2G_FLEX_YCR(Y,RRR) "Total V2G flexibility use per region (TWh)";
+$ifi %EV%==yes PARAMETER V2G_per_EV_FLEX_YCR(Y,RRR) "Total V2G flexibility use per EV per region (TWh)";
+$ifi %DEMANDRESPONSE%==yes PARAMETER DR_FLEX_Y(Y) "Total Demand Response flexibility use (TWh)";
 
 **Additional Addon output
 *HEATRANS
@@ -276,8 +279,6 @@ $label NO_HYDROGEN_STORAGE
 * ---------------- END OF ENERGY STORAGE -----------------
 
 
-
-
 * -------------------- ENERGY PRODUCTION ---------------------
 
 ** ELECTRICITY PRODUCTION HOURLY
@@ -458,12 +459,10 @@ EL_DEMAND_YCRST(Y,C,IR,S,T,'ENDO_INTERSTO','MWh')$CCCRRR(C,IR)=
 
 $ifi not %EV%==yes $goto NO_EV
 EL_DEMAND_YCRST(Y,C,IR,S,T,'ENDO_EV','MWh')$CCCRRR(C,IR)=
-                                + VEV_VG2V_BEV.L(Y,IR,S,T)
-                                + VEV_VG2V_PHEV.L(Y,IR,S,T)
-$ifi %V2G%==yes                 - VEV_VV2G_BEV.L(Y,IR,S,T)
-$ifi %V2G%==yes                 - VEV_VV2G_PHEV.L(Y,IR,S,T)
-$ifi %STEPCHARGSCHEME%==yes     - VEV_VV2G_BEV.L(Y,IR,S,T)$(cs('v2g',IY411))
-$ifi %STEPCHARGSCHEME%==yes     - VEV_VV2G_PHEV.L(Y,IR,S,T)$(cs('v2g',IY411))
+                                + VEV_G2V_BEV.L(Y,IR,S,T)
+                                + VEV_G2V_PHEV.L(Y,IR,S,T)
+$ifi %V2G%==yes                 - VEV_V2G_BEV.L(Y,IR,S,T)
+$ifi %V2G%==yes                 - VEV_V2G_PHEV.L(Y,IR,S,T)
 ;
 $label NO_EV
 
@@ -492,6 +491,13 @@ EL_DEMAND_YCRST(Y,C,IR,S,T,'ENDO_BIOMETHANE','MWh')$CCCRRR(C,IR)=
 $label NO_HYDROGEN_DEMAND
 
 
+**FLEXIBILITY
+$ifi %EV%==yes V2G_FLEX_Y(Y)=SUM((IR,S,T), VEV_V2G_BEV.L(Y,IR,S,T)*IHOURSINST(S,T))/1000000;
+$ifi %EV%==yes V2G_FLEX_YCR(Y,IR)=SUM((S,T), VEV_V2G_BEV.L(Y,IR,S,T)*IHOURSINST(S,T))/1000000;
+$ifi %EV%==yes V2G_per_EV_FLEX_YCR(Y,IR)$(IHASBEV(IR))=SUM((S,T), VEV_V2G_BEV.L(Y,IR,S,T)*IHOURSINST(S,T))/1000000/EV_BEV_available(Y,IR);
+$ifi %DEMANDRESPONSE%==yes DR_FLEX_Y(Y)=SUM((IA,S,DR_TECH,T), VDR_DOWN.L(Y,IA,DR_TECH,S,T)*IHOURSINST(S,T))/1000000;
+
+
 **LOSSES
 EL_DEMAND_YCRST(Y,C,IR,S,T,'DIST_LOSSES','MWh')$CCCRRR(C,IR)=
 * EXOGENOUS DEMAND
@@ -503,19 +509,7 @@ $ifi not %stointers%==all +SUM(IA$RRRAAA(IR,IA),SUM(IGESTO$IAGK_HASORPOT(Y,IA,IG
 $ifi     %stointers%==all +SUM(IA$RRRAAA(IR,IA),SUM(IGESTO$IAGK_HASORPOT(Y,IA,IGESTO),VESTOLOADTS.L(Y,IA,IGESTO,S,T)*DISLOSS_E_AG(IA,IGESTO)/(1-DISLOSS_E_AG(IA,IGESTO))))
 * INTERSEASONAL ELECTRICITY STORAGE
 +SUM(IA$RRRAAA(IR,IA),SUM(IGESTOS$IAGK_HASORPOT(Y,IA,IGESTOS),VESTOLOADT.L(Y,IA,IGESTOS,S,T)*DISLOSS_E_AG(IA,IGESTOS)/(1-DISLOSS_E_AG(IA,IGESTOS))))
-* EVs
-$ifi not %EV%==yes $goto NO_EV2
-                               +(
-                                + VEV_VG2V_BEV.L(Y,IR,S,T)
-                                + VEV_VG2V_PHEV.L(Y,IR,S,T)
-                                )*EV_DISTLOSSLOAD(IR)/(1-EV_DISTLOSSLOAD(IR))
-                                +(
-$ifi %V2G%==yes                 - VEV_VV2G_BEV.L(Y,IR,S,T)
-$ifi %V2G%==yes                 - VEV_VV2G_PHEV.L(Y,IR,S,T)
-$ifi %STEPCHARGSCHEME%==yes     - VEV_VV2G_BEV.L(Y,IR,S,T)$(cs('v2g',IY411))
-$ifi %STEPCHARGSCHEME%==yes     - VEV_VV2G_PHEV.L(Y,IR,S,T)$(cs('v2g',IY411))
-                                +0)*EV_DISTLOSSUNLOAD(IR)/(1-EV_DISTLOSSUNLOAD(IR))
-$label NO_EV2
+
 *CCS
 $ifi %CCS%==yes +SUM((IA,G)$(IAGK_HASORPOT(Y,IA,G) AND RRRAAA(IR,IA) AND CCS_G(G)),VGF_T.L(Y,IA,G,S,T) * IM_CO2(G)*IOF0001 * IOF3P6 * CCS_CO2CAPTEFF_G(G)* CCS_DECO2COMP_G(G)*DISLOSS_E_AG(IA,G)/(1-DISLOSS_E_AG(IA,G)))
 
@@ -1700,6 +1694,8 @@ $ifi %HYDROGEN%==yes  XH2_FLOW_YCR(Y,C,IRRRE,IRRRI,UNITS)=0;
 $ifi %HYDROGEN%==yes  ECO_XH2_YCR(Y,C,RRR,IRRRI,CATEGORY,SUBCATEGORY,UNITS)=0;
 $ifi %HYDROGEN%==yes  H2_DEMAND_YCRST(Y,C,RRR,SSS,TTT,VARIABLE_CATEGORY,UNITS)=0;
 $ifi %HYDROGEN%==yes  H2_DEMAND_YCR(Y,C,RRR,VARIABLE_CATEGORY,UNITS)=0;
+
+
 
 
 
