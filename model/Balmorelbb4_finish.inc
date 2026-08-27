@@ -336,6 +336,7 @@ PARAMETER IINVYEARG_LEFT(Y,Y,G)      "Remaining years of the lifetime of G of an
 PARAMETER IINVYEARX_LEFT(Y,Y)        "Remaining years of the lifetime of a transmission line investment made in Y (first index) at the beggining of Y (second index) (years)";
 PARAMETER IN_INV_G(Y,G)              "Number of investments made OF G within Y (fraction)";
 PARAMETER IN_INV_X(Y)                "Number of investments made OF a transmission line within Y (fraction)";
+PARAMETER IPREV_VGKN_SUM(Y,RRR,TECH_GROUP) "Previous model-year grouped investments used for expansion regime gating (MW)";
 
 
 *------------ Calculation of IYHASANNUITYG and IYHASANNUITYX to include/exclude the payment of the annuities---------------------
@@ -934,6 +935,8 @@ EQUATIONS
    QKSUBTECHGROUPC(Y,C,TECH_GROUP,SUBTECH_GROUP)   "Maximum capacity by year, country and subtechnology group (MW)"
    QKSUBTECHGROUPR(Y,RRR,TECH_GROUP,SUBTECH_GROUP) "Maximum capacity by year, region and subtechnology group (MW)"
    QKSUBTECHGROUPA(Y,AAA,TECH_GROUP,SUBTECH_GROUP) "Maximum capacity by year, area and subtechnology group (MW)"
+   QEXPANSION_RENEWABLE(Y,RRR,TECH_GROUP) "Expansion rates for renewable technologies (MW)"
+
 
    QGMINFUELC(Y,C,FFF)      "Minimum electricity generation year, country and fuel (MWh)"
    QGMAXFUELC(Y,C,FFF)      "Maximum electricity generation year, country and fuel (MWh)"
@@ -1820,6 +1823,61 @@ $ifi %DECOM%==yes   -VDECOM_EXO_ACCUM(IY411,IA,G)$IGDECOMEXOPOT(IY411,IA,G)
       =L=  SUBTECHGROUPKPOT(IA,TECH_GROUP,SUBTECH_GROUP)
 ;
 
+QEXPANSION_RENEWABLE(IY411,IR,TECH_GROUP)$
+  (SUM(SUBTECH_GROUP$SUBTECHGROUPKPOT(IR,TECH_GROUP,SUBTECH_GROUP), 1) > 0
+   AND SUM(GROWTHMODE, EXPANSION_RENEWABLE(IY411,IR,TECH_GROUP,GROWTHMODE)) > 0) ..
+
+*Sum additional allowed investments by technology group across all subtechnology groups
+    SUM(
+      SUBTECH_GROUP$SUBTECHGROUPKPOT(IR,TECH_GROUP,SUBTECH_GROUP),
+      SUM(
+        IAGK_HASORPOT(IY411,IA,G)$(
+            RRRAAA(IR,IA)
+            AND IAGKNY(IY411,IA,G)
+            AND GDATA(G,'GDTECHGROUP') EQ TECH_GROUP_VALUE(TECH_GROUP)
+            AND GDATA(G,'GDSUBTECHGROUP') EQ SUBTECH_GROUP_VALUE(SUBTECH_GROUP)
+        ),
+        VGKN(IY411,IA,G)
+      )
+    )
+    =L=
+
+*First model year --> Fixed investment limit
+  EXPANSION_RENEWABLE(IY411,IR,TECH_GROUP,'Y_FIRST_CAP')
+    $((SUM(IY402$IY411PREVY(IY411,IY402), 1) EQ 0)
+      OR
+      (IPREV_VGKN_SUM(IY411,IR,TECH_GROUP) EQ 0)) +
+
+*Subsequent model year (linear growth)
+      EXPANSION_RENEWABLE(IY411,IR,TECH_GROUP,'Y_LIN_ADD')
+        $((SUM(IY402$IY411PREVY(IY411,IY402), 1) GT 0)
+          AND (IPREV_VGKN_SUM(IY411,IR,TECH_GROUP) GT 0)
+          AND EXPANSION_RENEWABLE(IY411,IR,TECH_GROUP,'Y_LIN_ADD')) *
+          (YVALUE(IY411) - SUM(Y$IY411PREVY(IY411,Y), YVALUE(Y))) +
+
+*Subsequent model year (exponential growth)
+    SUM(IY402$IY411PREVY(IY411,IY402),
+      SUM(
+        IAGK_HASORPOT(IY402,IA,G)$(
+          RRRAAA(IR,IA)
+          AND IAGKNY(IY402,IA,G)
+          AND GDATA(G,'GDTECHGROUP') EQ TECH_GROUP_VALUE(TECH_GROUP)
+        ),
+        VGKN(IY402,IA,G)
+      )
+      * (
+        POWER(
+          1 + EXPANSION_RENEWABLE(IY411,IR,TECH_GROUP,'Y_EXP_ADD'),
+          YVALUE(IY411) - YVALUE(IY402)
+        ) - 1
+      )
+    )
+    $((SUM(IY402$IY411PREVY(IY411,IY402), 1) GT 0)
+      AND (IPREV_VGKN_SUM(IY411,IR,TECH_GROUP) GT 0)
+      AND EXPANSION_RENEWABLE(IY411,IR,TECH_GROUP,'Y_EXP_ADD'))
+
+;
+
 *--- End of Capacity restrictions by Technology Group--------------------------------------------
 
 
@@ -2193,6 +2251,7 @@ $ifi not %TechInvest%==yes $ifi not %DECOM%==yes  $goto NO_TECH_INVESTMENTS_NO_D
                                  QKSUBTECHGROUPC
                                  QKSUBTECHGROUPR
                                  QKSUBTECHGROUPA
+                                 QEXPANSION_RENEWABLE
 *--- Fuel potential restrictions ------------------------------------------------
                                  QKEFUELC
                                  QKEFUELR

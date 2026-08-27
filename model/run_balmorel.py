@@ -45,8 +45,24 @@ if __name__ == '__main__':
     # Get the base data of the sets we are going to change and launch the baseline
     parameters = GSA_parameters(input_file = "../{}/input_data/input.csv".format(rpath))
     sets = parameters.load_sets()
-    os.system('gams ./Balmorel_ReadData.gms --params="{}" s=s1 > ../{}/log_files/output_file_baseline.txt'.format(sets, rpath))
-    os.system('gams ./Balmorel_finish.gms --id=baseline --rpath={1} r=s1 threads={0}> ../{1}/log_files/output_file_baseline2.txt'.format(nb_cores-1, rpath))
+
+    cmd1 = 'gams ./Balmorel_ReadData.gms --params="{}" s=s1'.format(sets)
+    print("RUNNING:", cmd1, flush=True)
+    rc1 = os.system(cmd1)
+
+    if rc1 != 0:
+        print("Balmorel_ReadData failed. See log below:\n", flush=True)
+        os.system("tail -n 50 Balmorel_ReadData.lst")
+        sys.exit(1)
+
+    cmd2 = 'gams ./Balmorel_finish.gms --id=baseline --rpath={} r=s1 threads={}'.format(rpath, nb_cores-1)
+    print("RUNNING:", cmd2, flush=True)
+    rc2 = os.system(cmd2)
+
+    if rc2 != 0:
+        print("Balmorel_finish.gms baseline failed", flush=True)
+        os.system("tail -n 50 Balmorel_finish.lst")
+        sys.exit(1)
     
     # Loop for multi-core launch
     tic = time.time()
@@ -55,20 +71,6 @@ if __name__ == '__main__':
     pool.close()
     pool.join()
 
-    # # Merge the results files
-    # merge_cmd = "gdxmerge"
-    # for id in range(len(samples)):
-    #     merge_cmd += " ../{}/output_data/Results_scenario_{}.gdx".format(rpath, id+1)
-    # merge_cmd += " output=../{}/output_data/Results_merged.gdx".format(rpath)
-    # os.system(merge_cmd)
-    
-    # # Merge the input data files -> Not working for now
-    # merge_cmd = "gdxmerge"
-    # for id in range(len(samples)):
-    #     merge_cmd += " ../scenario_data/input_data/input_data_scenario_{}.gdx".format(id+1)
-    # merge_cmd += " exclude=FUELPRICE output=../scenario_data/input_data/input_data_merged.gdx"
-    # os.system(merge_cmd)
-    
     tac = time.time()
     time_trajectory = tac-tic
     print("Time to create scenarios:", timedelta(seconds=time_trajectory))
